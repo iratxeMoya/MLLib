@@ -14,13 +14,14 @@ class LinearReg():
         
         logger.info('Linear Regression model initialized')
     
-    def testModels(self, predictableColName, minGrade = 1, maxGrade = 3):
+    def testModels(self, predictableColName, minGrade = 1, maxGrade = 3, notFeatures = []):
         
         logger.info('---- TESTING MODELS ----')
         logger.info('Getting posible predictor combinations')
         
         Y = self.data[predictableColName]
         posibleFeatureColNames = self.data.loc[:, self.data.columns != predictableColName].columns.tolist()
+        posibleFeatureColNames = list(filter(lambda e: filterByName(e, notFeatures), posibleFeatureColNames))
         posibleFeatureColNames = list(filter(lambda e: filterStrs(e, self.data), posibleFeatureColNames))
         
         combinations = []
