@@ -10,7 +10,6 @@ class Base():
     def __init__(self, data):
         
         self.models = []
-        self.bestModel = None
         self.data = data
         
     def visualizeModel(self, rank = 0):
@@ -76,9 +75,9 @@ class LinearReg(Base):
             self.models.append(combScores[0])
         
         self.models = sorted(self.models, key=lambda k: (k['error'], -k['score'], k['degree']))
-        self.bestModel = sorted(self.models, key=lambda k: (k['error'], -k['score'], k['degree']))[0]
+        
         logger.info('---- RESULTS ----')
-        logger.info('The best found model has score {} and error {} and has been achived with predictors {} and degree {}'.format(self.bestModel['score'], self.bestModel['error'], self.bestModel['comb'], self.bestModel['degree']))
+        logger.info('The best found model has score {} and error {} and has been achived with predictors {} and degree {}'.format(self.models[0]['score'], self.models[0]['error'], self.models[0]['comb'], self.models[0]['degree']))
         
     def createKnownModel(self, predictableColName, numFeatures, grade):
         
@@ -146,9 +145,9 @@ class LogitReg(Base):
             self.models.append(score)
         
         self.models = sorted(self.models, key=lambda k: (k['error'], -k['score']))
-        self.bestModel = sorted(self.models, key=lambda k: (k['error'], -k['score']))[0]
+        
         logger.info('---- RESULTS ----')
-        logger.info('The best found model has score {} and error {} and has been achived with {} predictors'.format(self.bestModel['score'], self.bestModel['error'], len(self.bestModel['comb'])))
+        logger.info('The best found model has score {} and error {} and has been achived with {} predictors'.format(self.models[0]['score'], self.models[0]['error'], len(self.models[0]['comb'])))
         
     def createKnownModel(self, predictableColName, numFeatures):
         
@@ -171,4 +170,55 @@ class LogitReg(Base):
         self.models.append(score)
         logger.info('---- RESULTS ----')
         logger.info('The model has score {} and error {}'.format(score['score'], score['error']))
+        
+class Kmeans(Base):
     
+    def __init__(self, data):
+        logger.info('Initilizing Kmeans Classifier module')
+        
+        super().__init__(data)
+        self.ssw = []
+        
+        logger.info('Kmeans Classifier model initialized')
+        
+    def featureSelection(self):
+        return super().featureSelection()
+        
+    def testModels(self, minK = 1, maxK = None):
+        
+        logger.info('---- TESTING MODELS ----')
+        maxK = maxK if maxK is not None else len(self.data)
+        
+        for k in range(minK, maxK + 1):
+            model = KmeansModel(k)
+            
+            model.generate(self.data)
+            model.train()
+            
+            score = {'model': model, 'score': round(100 - model.getScore, 2), 'k': k, 'performance': {'davies_bouldin': model.davies_bouldin, 'calinski_harabasz': model.calinski_harabasz, 'silhouette': model.silhouette}, 'isGoodK': model.isGoodK()}
+            self.models.append(score)
+            self.ssw.append(model.getScore)
+        
+        self.models.sort(key=lambda x: (not x['isGoodK'], x['performance']['davies_bouldin'], -x['performance']['calinski_harabasz'], -x['performance']['silhouette']))
+        print([(m['isGoodK'], m['performance']['davies_bouldin']) for m in self.models])
+        
+        logger.info('---- RESULTS ----')
+        logger.info('The best found model has score {} and davies_bouldin {}, calinski_harabasz {} and silhouette {} and is a {} clustering with k = {}'.format(self.models[0]['score'], self.models[0]['performance']['davies_bouldin'], self.models[0]['performance']['calinski_harabasz'], self.models[0]['performance']['silhouette'], 'GOOD' if self.models[0]['isGoodK'] else 'BAD', self.models[0]['k']))
+        
+    def visualizeModel(self, rank = 0):
+        self.models[rank]['model'].visualize(self.ssw)
+    
+    def createKnownModel(self, k):
+        
+        logger.info('Generating KMeans Clustering model to with k = {}'.format(k))
+        
+        model = KmeansModel(k)
+            
+        model.generate(self.data)
+        model.train()
+        
+        score = {'model': model, 'score': round(model.getScore, 2), 'k': k, 'performance': {'davies_bouldin': model.davies_bouldin, 'calinski_harabasz': model.calinski_harabasz, 'silhouette': model.silhouette}, 'isGoodK': model.isGoodK()}
+        self.models.append(score)
+        
+        logger.info('---- RESULTS ----')
+        logger.info('The model has score {} and davies_bouldin {}, calinski_harabasz {} and silhouette {} and is a {} clustering'.format(self.models[0]['score'], self.models[0]['performance']['davies_bouldin'], self.models[0]['performance']['calinski_harabasz'], self.models[0]['performance']['silhouette'], 'GOOD' if self.models[0]['isGoodK'] else 'BAD'))

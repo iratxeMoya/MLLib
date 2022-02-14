@@ -1,12 +1,17 @@
-
+from random import sample
+from .logUtils import logger
 import numpy as np
 import pandas as pd
-from .logUtils import logger
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+from pytz import NonExistentTimeError
 from abc import ABC, abstractmethod
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+from sklearn.metrics import silhouette_samples, silhouette_score, davies_bouldin_score, calinski_harabasz_score
 from sklearn import metrics
 
 class Model(ABC):
@@ -212,6 +217,117 @@ class LogitModel(Model):
         ax.legend(loc="lower right")
         
         plt.show()
+        
+class KmeansModel(Model):
+    
+    def __init__(self, k):
+        super().__init__()
+        self.k = k
+        self.X = None
+        self.davies_bouldin = 0
+        self.calinski_harabasz = 0
+        self.silhouette = 0
+        self.centers = None
+        self.labels = None
+        
+    @property
+    def getScore(self):
+        return sum(np.min(cdist(self.X, self.lm.cluster_centers_, "euclidean"), axis = 1))
+    
+    def makePredictions(self):
+        return super().makePredictions()
+    
+    def getPerformance(self):
+        if self.k > 1:
+            self.davies_bouldin = davies_bouldin_score(self.X, self.labels)
+            self.calinski_harabasz = calinski_harabasz_score(self.X, self.labels)
+            self.silhouette = silhouette_score(self.X, self.labels)
+        
+    def generate(self, X):
+        self.X = X
+        self.lm = KMeans(n_clusters = self.k)
+        
+    def isGoodK(self):
+        if self.k > 1:
+            sample_silhouette_values = silhouette_samples(self.X, self.labels)
+            ssv = []
+            
+            for i in range(self.k):
+                ssv.append(sample_silhouette_values[self.labels == i])
+            
+            for v in ssv:
+                if 1 - abs(self.silhouette - np.mean(v)) < 0.9:
+                    return False
+                
+            return True
+        else:
+            return False
+        
+    def train(self):
+        self.lm.fit(self.X)
+        
+        self.centers = pd.DataFrame(self.lm.cluster_centers_)
+        self.labels = self.lm.labels_
+        
+        self.getPerformance()
+        
+    def visualize(self, ssw = None):
+        cmap = cm.get_cmap("Spectral")
+        color_palette = [cmap(float(i)/self.k) for i in range(1, self.k + 1)]
+        label_color = [color_palette[i] for i in self.labels]
+        
+        if self.X.shape[1] == 2:
+            if ssw:
+                
+                fig, (ax1, ax2) = plt.subplots(1,2)
+                fig.set_size_inches(20,8)
+                
+                ax1.set_title("Clustering for k = {}".format(self.k))
+                ax1.scatter(self.X[:, 0], self.X[:, 1], c = label_color)
+                ax1.scatter(self.centers[0], self.centers[1], marker = "x")
+                
+                ax2.plot(np.arange(len(ssw)), ssw, "bx-")
+                ax2.set_xlabel("k")
+                ax2.set_ylabel("SSw(k)")
+                ax2.set_title("Elbow method")
+            else:
+                fig, (ax1) = plt.subplots(1,1)
+                fig.set_size_inches(20,8)
+                
+                ax1.set_title("Clustering for k = {}".format(self.k))
+                ax1.scatter(self.X[:, 0], self.X[:, 1], c = label_color)
+                ax1.scatter(self.centers[0], self.centers[1], marker = "x")
+            
+            plt.show()
+        
+        elif self.X.shape[1] == 3:
+            if ssw:
+                fig = plt.figure()
+                fig.set_size_inches(20,8)
+                ax1 = fig.add_subplot(121, projection='3d')
+                ax1.set_title("Clustering for k = {}".format(self.k))
+                ax1.scatter(self.X[:, 0], self.X[:, 1], self.X[:, 2], c = label_color)
+                ax1.scatter(self.centers[0], self.centers[1], self.centers[2], marker = "x")
+                
+                ax2 = fig.add_subplot(122)
+                ax2.plot(np.arange(len(ssw)), ssw, "bx-")
+                ax2.set_xlabel("k")
+                ax2.set_ylabel("SSw(k)")
+                ax2.set_title("Elbow method")
+               
+            else:
+                fig = plt.figure()
+                fig.set_size_inches(20,8)
+                ax1 = fig.add_subplot(111, projection='3d')
+                ax1.set_title("Clustering for k = {}".format(self.k))
+                ax1.scatter(self.X[:, 0], self.X[:, 1], self.X[:, 2], c = label_color)
+                ax1.scatter(self.centers[0], self.centers[1], self.centers[2], marker = "x")
+                
+            plt.show()
+        
+        else:
+            logger.error('Cannot visualize data with {} dimensions'.format(self.X.shape()[1]))
+            
         
         
             
