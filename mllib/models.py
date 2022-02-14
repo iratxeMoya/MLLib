@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, AffinityPropagation
 from scipy.spatial.distance import cdist
 from sklearn.metrics import silhouette_samples, silhouette_score, davies_bouldin_score, calinski_harabasz_score
 from sklearn import metrics
@@ -329,5 +329,108 @@ class KmeansModel(Model):
             logger.error('Cannot visualize data with {} dimensions'.format(self.X.shape()[1]))
             
         
+class AffPropModel(Model):
+    
+    def __init__(self):
+        super().__init__()
+        self.X = None
+        self.n_clust = None
+        self.homogeneity = 0
+        self.silhouette = 0
+        self.completeness = 0
+        self.vmeasure = 0
+        self.ar2 = 0
+        self.ami = 0
+        self.centers = None
+        self.labels = None
+        self.realLabels = None
         
+    @property
+    def getScore(self):
+        return np.mean([self.homogeneity, self.completeness, self.vmeasure, self.ar2, self.ami, self.silhouette]) if self.n_clust > 1 else 0
+    
+    def makePredictions(self):
+        return super().makePredictions()
+    
+    def getPerformance(self, makePrint = False, saveInfo = True):
+        
+        if self.n_clust > 1 and self.n_clust < len(self.X):
+            if saveInfo:
+                self.homogeneity = metrics.homogeneity_score(self.realLabels, self.labels)
+                self.completeness = metrics.completeness_score(self.realLabels, self.labels)
+                self.vmeasure = metrics.v_measure_score(self.realLabels, self.labels)
+                self.ar2 = metrics.adjusted_rand_score(self.realLabels, self.labels)
+                self.ami = metrics.adjusted_mutual_info_score(self.realLabels, self.labels)
+                self.silhouette = metrics.silhouette_score(self.X, self.labels, metric="sqeuclidean")
+            
+            if makePrint:
+                if self.n_clust:
+                    logger.info("Cluster nums: %d" %self.n_clust)
+                    logger.info("Homogeneity: %0.3f" %self.homogeneity)
+                    logger.info("Completeness: %0.3f"%self.completeness)
+                    logger.info("V-measure: %0.3f"%self.vmeasure)
+                    logger.info("Adjusted R2: %0.3f"%self.ar2)
+                    logger.info("Adjusted mutual information: %0.3f"%self.ami)
+                    logger.info("Silhouett score: %0.3f"%self.silhouette)
+                else:
+                    logger.warning('Info not saved yet') 
+        else:
+            logger.warning('Performance cannot be computed with {} clusters'.format(self.n_clust))   
+        
+    def generate(self, X, labels, pref):
+        self.X = X
+        self.realLabels = labels
+        self.lm = AffinityPropagation(preference=pref * 10)
+            
+    def train(self):
+        self.lm.fit(self.X)
+        
+        self.centers = self.lm.cluster_centers_indices_
+        self.n_clust = len(self.centers)
+        self.labels = self.lm.labels_
+        
+        self.getPerformance()
+        
+    def visualize(self, ssw = None):
+        cmap = cm.get_cmap("Spectral")
+        color_palette = [cmap(float(i)/self.n_clust) for i in range(1, self.n_clust + 1)]
+        if len(color_palette) == 0:
+            color_palette.append((0.993464, 0.747712, 0.435294))
+        colors = [color_palette[i] for i in self.labels]
+        
+        if self.X.shape[1] == 2:
+            
+            plt.figure(figsize=(16,9))
+            plt.clf()
+            
+            for k, col in zip(range(self.n_clust), colors[:self.n_clust]):
+                class_members = (self.labels == k)
+                clust_center = self.X[self.centers[k]]
+                plt.scatter(self.X[class_members, 0], self.X[class_members, 1], color = col, marker = '.')
+                plt.plot(clust_center[0], clust_center[1], 'o', markerfacecolor = col, markeredgecolor = 'k')
+            
+            plt.title("Clustering for %d clusters"%self.n_clust)
+            
+            plt.show()
+        
+        elif self.X.shape[1] == 3:
+            
+            plt.figure(figsize=(16,9))
+            plt.clf()
+            
+            ax1 = fig.add_subplot(111, projection='3d')
+            
+            for k, col in zip(range(self.n_clust), colors[:self.n_clust]):
+                class_members = (self.labels == k)
+                clust_center = self.X[self.centers[k]]
+                ax1.scatter(self.X[class_members, 0], self.X[class_members, 1], self.X[class_members, 2], color = col, marker = '.')
+                ax1.plot(clust_center[0], clust_center[1], clust_center[2], 'o', markerfacecolor = col, markeredgecolor = 'k', markersize=14)
+            
+            ax1.set_title("Clustering for %d clusters"%self.n_clust)
+            
+            plt.show()
+
+        
+        else:
+            logger.error('Cannot visualize data with {} dimensions'.format(self.X.shape()[1]))
             

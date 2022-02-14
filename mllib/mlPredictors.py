@@ -200,7 +200,6 @@ class Kmeans(Base):
             self.ssw.append(model.getScore)
         
         self.models.sort(key=lambda x: (not x['isGoodK'], x['performance']['davies_bouldin'], -x['performance']['calinski_harabasz'], -x['performance']['silhouette']))
-        print([(m['isGoodK'], m['performance']['davies_bouldin']) for m in self.models])
         
         logger.info('---- RESULTS ----')
         logger.info('The best found model has score {} and davies_bouldin {}, calinski_harabasz {} and silhouette {} and is a {} clustering with k = {}'.format(self.models[0]['score'], self.models[0]['performance']['davies_bouldin'], self.models[0]['performance']['calinski_harabasz'], self.models[0]['performance']['silhouette'], 'GOOD' if self.models[0]['isGoodK'] else 'BAD', self.models[0]['k']))
@@ -222,3 +221,64 @@ class Kmeans(Base):
         
         logger.info('---- RESULTS ----')
         logger.info('The model has score {} and davies_bouldin {}, calinski_harabasz {} and silhouette {} and is a {} clustering'.format(self.models[0]['score'], self.models[0]['performance']['davies_bouldin'], self.models[0]['performance']['calinski_harabasz'], self.models[0]['performance']['silhouette'], 'GOOD' if self.models[0]['isGoodK'] else 'BAD'))
+        
+        
+class AffProp(Base):
+    
+    def __init__(self, data, labels):
+        logger.info('Initilizing Affinity Propagation Classifier module')
+        
+        super().__init__(data)
+        self.ssw = []
+        self.labels = labels
+        
+        logger.info('Affinity Propagation Classifier model initialized')
+        
+    def featureSelection(self):
+        return super().featureSelection()
+        
+    def testModels(self):
+        
+        logger.info('---- TESTING MODELS ----')
+        
+        for pref in range(-5, 5):
+        
+            model = AffPropModel()
+            model.generate(self.data, self.labels, pref)
+            model.train()
+            
+            score = {'model': model, 'score': model.getScore, 'k': model.n_clust, 'pref': pref}
+            self.models.append(score)
+        
+        self.models = sorted(self.models, key=lambda k: (-k['score']))
+        logger.info('---- RESULTS ----')
+        logger.info('The best found model has score {} and is a clustering with k = {} and pref = {}'.format(self.models[0]['score'], self.models[0]['k'], self.models[0]['pref'] * 10))
+    
+    def createKnownModel(self, pref):
+        logger.info('Generating Affinity Propagation Clustering model to with preference = {}'.format(pref))
+        
+        model = AffPropModel()
+        model.generate(self.data, self.labels, pref)
+        model.train()
+        
+        score = {'model': model, 'score': model.getScore, 'k': model.n_clust}
+        self.models.append(score)
+        
+        logger.info('---- RESULTS ----')
+        logger.info('The model has score {}'.format(self.models[0]['score'], self.models[0]['k']))
+        
+    def visualizeModel(self, rank = 0):
+        if len(self.models) - 1 < rank:
+            logger.error('There are not {} models'.format(rank + 1))
+            return
+        
+        if self.models[rank]['model'].n_clust == 0:
+            logger.error('Cannot visualize data with 0 clusters')
+            plt.figure(figsize=(16,9))
+            plt.scatter(self.data[:,0], self.data[:,1], c=self.labels, cmap = "autumn")
+            plt.title('Original data with original labels')
+            plt.show()
+            return
+        
+        self.models[rank]['model'].visualize(self.ssw)
+        
