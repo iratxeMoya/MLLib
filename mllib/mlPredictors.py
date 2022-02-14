@@ -173,11 +173,12 @@ class LogitReg(Base):
         
 class Kmeans(Base):
     
-    def __init__(self, data):
+    def __init__(self, data, labels = None):
         logger.info('Initilizing Kmeans Classifier module')
         
         super().__init__(data)
         self.ssw = []
+        self.labels = labels
         
         logger.info('Kmeans Classifier model initialized')
         
@@ -187,12 +188,12 @@ class Kmeans(Base):
     def testModels(self, minK = 1, maxK = None):
         
         logger.info('---- TESTING MODELS ----')
-        maxK = maxK if maxK is not None else len(self.data)
+        maxK = maxK if maxK is not None else len(self.data) - 1
         
         for k in range(minK, maxK + 1):
             model = KmeansModel(k)
             
-            model.generate(self.data)
+            model.generate(self.data, self.labels)
             model.train()
             
             score = {'model': model, 'score': round(100 - model.getScore, 2), 'k': k, 'performance': {'davies_bouldin': model.davies_bouldin, 'calinski_harabasz': model.calinski_harabasz, 'silhouette': model.silhouette}, 'isGoodK': model.isGoodK()}

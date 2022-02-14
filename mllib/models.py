@@ -30,8 +30,9 @@ class Model(ABC):
         
         self.X_train = X[check]
         self.X_test = X[~check]
-        self.Y_train = Y[check]
-        self.Y_test = Y[~check]
+        if Y is not None:
+            self.Y_train = Y[check]
+            self.Y_test = Y[~check]
     
     @abstractmethod  
     def generate(self):
@@ -228,32 +229,32 @@ class KmeansModel(Model):
         self.calinski_harabasz = 0
         self.silhouette = 0
         self.centers = None
-        self.labels = None
+        self.pred = None
         
     @property
     def getScore(self):
-        return sum(np.min(cdist(self.X, self.lm.cluster_centers_, "euclidean"), axis = 1))
+        return sum(np.min(cdist(self.X_test, self.lm.cluster_centers_, "euclidean"), axis = 1))
     
     def makePredictions(self):
-        return super().makePredictions()
+        self.pred = self.lm.predict(self.X_test)
     
     def getPerformance(self):
         if self.k > 1:
-            self.davies_bouldin = davies_bouldin_score(self.X, self.labels)
-            self.calinski_harabasz = calinski_harabasz_score(self.X, self.labels)
-            self.silhouette = silhouette_score(self.X, self.labels)
+            self.davies_bouldin = davies_bouldin_score(self.X_test, self.pred)
+            self.calinski_harabasz = calinski_harabasz_score(self.X_test, self.pred)
+            self.silhouette = silhouette_score(self.X_test, self.pred)
         
-    def generate(self, X):
-        self.X = X
+    def generate(self, X, Y, testSize = 0.2):
+        self.splitTrainTest(X, Y, testSize)
         self.lm = KMeans(n_clusters = self.k)
         
     def isGoodK(self):
         if self.k > 1:
-            sample_silhouette_values = silhouette_samples(self.X, self.labels)
+            sample_silhouette_values = silhouette_samples(self.X_test, self.pred)
             ssv = []
             
             for i in range(self.k):
-                ssv.append(sample_silhouette_values[self.labels == i])
+                ssv.append(sample_silhouette_values[self.pred == i])
             
             for v in ssv:
                 if 1 - abs(self.silhouette - np.mean(v)) < 0.9:
@@ -264,26 +265,31 @@ class KmeansModel(Model):
             return False
         
     def train(self):
-        self.lm.fit(self.X)
-        
-        self.centers = pd.DataFrame(self.lm.cluster_centers_)
-        self.labels = self.lm.labels_
-        
-        self.getPerformance()
+        if len(self.X_train) >= self.k:
+            self.lm.fit(self.X_train)
+            
+            self.centers = pd.DataFrame(self.lm.cluster_centers_)
+            
+            self.makePredictions()
+            self.getPerformance()
+        else:
+            logger.error('Number of samples {} cannot be smaller than number of clusters {}'.format(len(self.X_train), self.k))
         
     def visualize(self, ssw = None):
         cmap = cm.get_cmap("Spectral")
         color_palette = [cmap(float(i)/self.k) for i in range(1, self.k + 1)]
-        label_color = [color_palette[i] for i in self.labels]
+        test_label_color = [color_palette[i] for i in self.pred]
+        train_label_color = [color_palette[i] for i in self.lm.labels_]
         
-        if self.X.shape[1] == 2:
+        if self.X_test.shape[1] == 2:
             if ssw:
                 
                 fig, (ax1, ax2) = plt.subplots(1,2)
                 fig.set_size_inches(20,8)
                 
                 ax1.set_title("Clustering for k = {}".format(self.k))
-                ax1.scatter(self.X[:, 0], self.X[:, 1], c = label_color)
+                ax1.scatter(self.X_train[:, 0], self.X_train[:, 1], c = train_label_color)
+                ax1.scatter(self.X_test[:, 0], self.X_test[:, 1], c = test_label_color, marker = '*')
                 ax1.scatter(self.centers[0], self.centers[1], marker = "x")
                 
                 ax2.plot(np.arange(len(ssw)), ssw, "bx-")
@@ -295,18 +301,20 @@ class KmeansModel(Model):
                 fig.set_size_inches(20,8)
                 
                 ax1.set_title("Clustering for k = {}".format(self.k))
-                ax1.scatter(self.X[:, 0], self.X[:, 1], c = label_color)
+                ax1.scatter(self.X_train[:, 0], self.X_train[:, 1], c = train_label_color)
+                ax1.scatter(self.X_test[:, 0], self.X_test[:, 1], c = test_label_color, marker = '*')
                 ax1.scatter(self.centers[0], self.centers[1], marker = "x")
             
             plt.show()
         
-        elif self.X.shape[1] == 3:
+        elif self.X_test.shape[1] == 3:
             if ssw:
                 fig = plt.figure()
                 fig.set_size_inches(20,8)
                 ax1 = fig.add_subplot(121, projection='3d')
                 ax1.set_title("Clustering for k = {}".format(self.k))
-                ax1.scatter(self.X[:, 0], self.X[:, 1], self.X[:, 2], c = label_color)
+                ax1.scatter(self.X_train[:, 0], self.X_train[:, 1], self.X_train[:, 2], c = train_label_color)
+                ax1.scatter(self.X_test[:, 0], self.X_test[:, 1], self.X_test[:, 2], c = test_label_color, marker = '*')
                 ax1.scatter(self.centers[0], self.centers[1], self.centers[2], marker = "x")
                 
                 ax2 = fig.add_subplot(122)
@@ -320,7 +328,8 @@ class KmeansModel(Model):
                 fig.set_size_inches(20,8)
                 ax1 = fig.add_subplot(111, projection='3d')
                 ax1.set_title("Clustering for k = {}".format(self.k))
-                ax1.scatter(self.X[:, 0], self.X[:, 1], self.X[:, 2], c = label_color)
+                ax1.scatter(self.X_train[:, 0], self.X_train[:, 1], self.X_train[:, 2], c = train_label_color)
+                ax1.scatter(self.X_test[:, 0], self.X_test[:, 1], self.X_test[:, 2], c = test_label_color, marker = '*')
                 ax1.scatter(self.centers[0], self.centers[1], self.centers[2], marker = "x")
                 
             plt.show()
@@ -333,7 +342,6 @@ class AffPropModel(Model):
     
     def __init__(self):
         super().__init__()
-        self.X = None
         self.n_clust = None
         self.homogeneity = 0
         self.silhouette = 0
@@ -342,26 +350,26 @@ class AffPropModel(Model):
         self.ar2 = 0
         self.ami = 0
         self.centers = None
-        self.labels = None
-        self.realLabels = None
+        self.centers_idx = None
+        self.pred = None
         
     @property
     def getScore(self):
         return np.mean([self.homogeneity, self.completeness, self.vmeasure, self.ar2, self.ami, self.silhouette]) if self.n_clust > 1 else 0
     
     def makePredictions(self):
-        return super().makePredictions()
+        self.pred = self.lm.predict(self.X_test)
     
     def getPerformance(self, makePrint = False, saveInfo = True):
         
-        if self.n_clust > 1 and self.n_clust < len(self.X):
+        if self.n_clust > 1 and self.n_clust < len(self.X_test):
             if saveInfo:
-                self.homogeneity = metrics.homogeneity_score(self.realLabels, self.labels)
-                self.completeness = metrics.completeness_score(self.realLabels, self.labels)
-                self.vmeasure = metrics.v_measure_score(self.realLabels, self.labels)
-                self.ar2 = metrics.adjusted_rand_score(self.realLabels, self.labels)
-                self.ami = metrics.adjusted_mutual_info_score(self.realLabels, self.labels)
-                self.silhouette = metrics.silhouette_score(self.X, self.labels, metric="sqeuclidean")
+                self.homogeneity = metrics.homogeneity_score(self.Y_test, self.pred)
+                self.completeness = metrics.completeness_score(self.Y_test, self.pred)
+                self.vmeasure = metrics.v_measure_score(self.Y_test, self.pred)
+                self.ar2 = metrics.adjusted_rand_score(self.Y_test, self.pred)
+                self.ami = metrics.adjusted_mutual_info_score(self.Y_test, self.pred)
+                self.silhouette = metrics.silhouette_score(self.X_test, self.pred, metric="sqeuclidean")
             
             if makePrint:
                 if self.n_clust:
@@ -377,54 +385,54 @@ class AffPropModel(Model):
         else:
             logger.warning('Performance cannot be computed with {} clusters'.format(self.n_clust))   
         
-    def generate(self, X, labels, pref):
-        self.X = X
-        self.realLabels = labels
+    def generate(self, X, Y, pref, testSize = 0.2):
+        self.splitTrainTest(X, Y, testSize)
         self.lm = AffinityPropagation(preference=pref * 10)
             
     def train(self):
-        self.lm.fit(self.X)
+        self.lm.fit(self.X_train)
         
-        self.centers = self.lm.cluster_centers_indices_
-        self.n_clust = len(self.centers)
-        self.labels = self.lm.labels_
+        self.centers_idx = self.lm.cluster_centers_indices_
+        self.centers = pd.DataFrame(self.lm.cluster_centers_)
+        self.n_clust = len(self.centers_idx)
         
+        self.makePredictions()
         self.getPerformance()
         
     def visualize(self, ssw = None):
         cmap = cm.get_cmap("Spectral")
         color_palette = [cmap(float(i)/self.n_clust) for i in range(1, self.n_clust + 1)]
+        
         if len(color_palette) == 0:
             color_palette.append((0.993464, 0.747712, 0.435294))
-        colors = [color_palette[i] for i in self.labels]
+            
+        test_label_color = [color_palette[i] for i in self.pred]
+        train_label_color = [color_palette[i] for i in self.Y_train]
         
-        if self.X.shape[1] == 2:
+        if self.X_test.shape[1] == 2:
             
             plt.figure(figsize=(16,9))
-            plt.clf()
             
-            for k, col in zip(range(self.n_clust), colors[:self.n_clust]):
-                class_members = (self.labels == k)
-                clust_center = self.X[self.centers[k]]
-                plt.scatter(self.X[class_members, 0], self.X[class_members, 1], color = col, marker = '.')
-                plt.plot(clust_center[0], clust_center[1], 'o', markerfacecolor = col, markeredgecolor = 'k')
+            plt.title("Clustering for k = {}".format(self.n_clust))
+            plt.scatter(self.X_train[:, 0], self.X_train[:, 1], c = train_label_color)
+            plt.scatter(self.X_test[:, 0], self.X_test[:, 1], c = test_label_color, marker = '*')
+            plt.scatter(self.centers[0], self.centers[1], marker = "x")
             
             plt.title("Clustering for %d clusters"%self.n_clust)
             
             plt.show()
         
-        elif self.X.shape[1] == 3:
+        elif self.X_test.shape[1] == 3:
             
             plt.figure(figsize=(16,9))
             plt.clf()
             
             ax1 = fig.add_subplot(111, projection='3d')
             
-            for k, col in zip(range(self.n_clust), colors[:self.n_clust]):
-                class_members = (self.labels == k)
-                clust_center = self.X[self.centers[k]]
-                ax1.scatter(self.X[class_members, 0], self.X[class_members, 1], self.X[class_members, 2], color = col, marker = '.')
-                ax1.plot(clust_center[0], clust_center[1], clust_center[2], 'o', markerfacecolor = col, markeredgecolor = 'k', markersize=14)
+            ax1.set_title("Clustering for k = {}".format(self.n_clust))
+            ax1.scatter(self.X_train[:, 0], self.X_train[:, 1], self.X_train[:, 2], c = train_label_color)
+            ax1.scatter(self.X_test[:, 0], self.X_test[:, 1], self.X_test[:, 2], c = test_label_color, marker = '*')
+            ax1.scatter(self.centers[0], self.centers[1], self.centers[2], marker = "x")
             
             ax1.set_title("Clustering for %d clusters"%self.n_clust)
             
